@@ -4,25 +4,33 @@ const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
 
 // Configure ffmpeg binary path
 ffmpeg.setFfmpegPath(ffmpegPath);
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
+const PORT = process.env.PORT || 3000;
 
 if (!BOT_TOKEN) {
   console.error('Error: BOT_TOKEN environment variable is not set!');
   process.exit(1);
 }
 
+// Minimal HTTP server for Render's health check
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Bot is live and running!');
+}).listen(PORT, () => {
+  console.log(`HTTP server listening on port ${PORT}`);
+});
+
 const bot = new Telegraf(BOT_TOKEN);
 
-// Start command
 bot.start((ctx) => {
   ctx.reply("👋 Welcome! Send or forward any video (or video document) to me, and I'll convert it to MP3 audio.");
 });
 
-// Download helper function using streams
 async function downloadFile(fileUrl, outputPath) {
   const writer = fs.createWriteStream(outputPath);
   const response = await axios({
@@ -39,7 +47,6 @@ async function downloadFile(fileUrl, outputPath) {
   });
 }
 
-// Convert video file to MP3
 function convertToAudio(inputPath, outputPath) {
   return new Promise((resolve, reject) => {
     ffmpeg(inputPath)
@@ -51,7 +58,6 @@ function convertToAudio(inputPath, outputPath) {
   });
 }
 
-// Handle video & document uploads
 async function handleVideoConversion(ctx) {
   const message = ctx.message;
   let fileId = null;
@@ -70,10 +76,7 @@ async function handleVideoConversion(ctx) {
   const audioPath = path.join(__dirname, `converted_${fileId}.mp3`);
 
   try {
-    // Get file download link from Telegram
     const fileLink = await ctx.telegram.getFileLink(fileId);
-
-    // Download video locally
     await downloadFile(fileLink.href, videoPath);
 
     await ctx.telegram.editMessageText(
@@ -83,7 +86,6 @@ async function handleVideoConversion(ctx) {
       '⚙️ Converting video to audio...'
     );
 
-    // Convert video to MP3
     await convertToAudio(videoPath, audioPath);
 
     await ctx.telegram.editMessageText(
@@ -93,13 +95,11 @@ async function handleVideoConversion(ctx) {
       '📤 Uploading MP3...'
     );
 
-    // Send converted audio file to user
     await ctx.replyWithAudio(
       { source: audioPath, filename: 'audio.mp3' },
       { caption: 'Here is your converted audio file! 🎶' }
     );
 
-    // Clean up status message
     await ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id);
 
   } catch (error) {
@@ -111,21 +111,17 @@ async function handleVideoConversion(ctx) {
       `❌ Failed to convert video. Error: ${error.message}`
     );
   } finally {
-    // Cleanup temporary local files
     if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
     if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
   }
 }
 
-// Attach message handlers
 bot.on('video', handleVideoConversion);
 bot.on('document', handleVideoConversion);
 
-// Launch bot using polling
 bot.launch().then(() => {
-  console.log('Bot is running...');
+  console.log('Bot is running via polling...');
 });
 
-// Enable graceful stop
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));

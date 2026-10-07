@@ -52,11 +52,14 @@ function convertToAudio(inputPath, outputPath) {
     ffmpeg(inputPath)
       .toFormat('mp3')
       .audioCodec('libmp3lame')
+      .audioBitrate('128k')          // Standard quality, much faster processing
+      .outputOptions('-preset ultrafast') // Speed up encoding process
       .on('end', () => resolve())
       .on('error', (err) => reject(err))
       .save(outputPath);
   });
 }
+
 
 async function handleVideoConversion(ctx) {
   const message = ctx.message;
